@@ -1,12 +1,10 @@
 package top.nekoit.springboot.permission.interceptor
 
 import org.springframework.boot.autoconfigure.web.servlet.error.BasicErrorController
-import org.springframework.stereotype.Component
 import org.springframework.web.method.HandlerMethod
 import org.springframework.web.servlet.HandlerInterceptor
-import top.nekoit.springboot.permission.annotation.PermissionCheck
 import top.nekoit.springboot.permission.configuration.NekoPermissionConfiguration
-import top.nekoit.springboot.permission.enum.AuthorizationType
+import top.nekoit.springboot.permission.handler.PermissionHandler
 import javax.annotation.Resource
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
@@ -27,31 +25,15 @@ class PermissionInterceptor : HandlerInterceptor {
         if (handler.bean is BasicErrorController) {
             return true
         }
-        if (!handler.hasMethodAnnotation(PermissionCheck::class.java)) {
-            return !config.defaultPermission
+
+        val role = config.handler.analysisRequest(request)
+        request.setAttribute("role", role)
+
+        return if (config.handler.checkPermission(request, role, handler)){
+            true
+        }else {
+            config.handler.onPermissionDenied(request,response,handler)
+            false
         }
-
-        val permissionCheck = handler.getMethodAnnotation(PermissionCheck::class.java)!!
-        if (!permissionCheck.enable) return true
-
-        if (config.allowType.contains(AuthorizationType.SESSION)) {
-            val session = request.session
-            val role = config.sessionHandler.getRole(session)
-            if (permissionCheck.allowRole.contains(role.name)) {
-                return true
-            }
-        }
-
-        if (config.allowType.contains(AuthorizationType.HEADER_AUTHORIZATION)) {
-            val token = request.getHeader(config.headerName)
-            token?.let {
-                val role = config.headerHandler.getRole(token)
-                if (permissionCheck.allowRole.contains(role.name)) {
-                    return true
-                }
-            }
-        }
-
-        return config.handler.onPermissionDenied(request, response, handler)
     }
 }
